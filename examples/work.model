@@ -1,0 +1,25 @@
+begin
+    var age: int;
+    var salary: float;
+
+    age := 25 plus 2; 
+    salary := 1500; 
+    
+    writeln age;
+    writeln salary;
+    
+    if (age GE 18)
+        writeln age
+    else
+        writeln salary;
+    
+    var binary : int;
+    var octal : int;
+    var hex : int;
+    
+    binary := 1010B;
+    octal := 12O;
+    hex := ABCDh;
+    
+    writeln binary;
+end

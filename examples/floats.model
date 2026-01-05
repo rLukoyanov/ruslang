@@ -1,0 +1,8 @@
+begin
+    var age: int;
+    var salary: float;
+
+    age := .25; 
+    salary := 1500.; 
+    
+end
