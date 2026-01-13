@@ -1,0 +1,17 @@
+begin
+    var x, y, z: int;
+    var result: bool;
+    
+    x := 10;
+    y := 20;
+    z := x plus y;
+    
+    result := x LT y;
+    
+    if (result)
+        writeln z
+    else
+        writeln x;
+    
+    writeln result
+end

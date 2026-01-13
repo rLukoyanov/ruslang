@@ -1,0 +1,25 @@
+% Тест условных операторов %
+begin
+    var x, y: int;
+    var max: int;
+    
+    x := 15;
+    y := 25;
+    
+    % Простое if-else %
+    if (x LT y)
+        max := y
+    else
+        max := x;
+    
+    writeln max;
+    
+    % Вложенные if %
+    if (max GE 20)
+        if (max LE 30)
+            writeln 1
+        else
+            writeln 2
+    else
+        writeln 3
+end

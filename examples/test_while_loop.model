@@ -1,0 +1,11 @@
+% Тест цикла while %
+begin
+    var counter, limit: int;
+    
+    counter := 0;
+    limit := 5;
+    
+    % Простой while с составным оператором %
+    while (counter LT limit)
+        counter := counter plus 1
+end

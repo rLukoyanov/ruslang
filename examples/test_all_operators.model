@@ -1,0 +1,39 @@
+% Комплексный тест всех операторов %
+begin
+    var i, j, sum, product: int;
+    var x, y: float;
+    var flag, result: bool;
+    
+    % Объявление и инициализация %
+    i := 0;
+    j := 10;
+    sum := 0;
+    x := 3.14;
+    y := 2.71;
+    flag := true;
+    
+    % Цикл for с операторами %
+    for i := 1 to 5
+        sum := sum plus i
+    next;
+    
+    % Условный оператор %
+    if (sum GT 10)
+        product := sum mult 2
+    else
+        product := sum;
+    
+    % Логические операции %
+    result := (i LT j) or (sum EQ product);
+    result := result and flag;
+    result := ~result;
+    
+    % Вывод %
+    writeln result, x, y;
+    
+    % Вещественные операции %
+    x := x plus y;
+    y := x mult 2.0;
+    
+    writeln x, y
+end

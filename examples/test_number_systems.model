@@ -1,0 +1,32 @@
+% Тест разных систем счисления %
+begin
+    var binary, octal, hex, decimal: int;
+    
+    % Двоичная система %
+    binary := 1010B;
+    writeln binary;
+    
+    binary := 11111111B;
+    writeln binary;
+    
+    % Восьмеричная система %
+    octal := 12O;
+    writeln octal;
+    
+    octal := 777O;
+    writeln octal;
+    
+    % Шестнадцатеричная система %
+    hex := ABCDh;
+    writeln hex;
+    
+    hex := FF00h;
+    writeln hex;
+    
+    % Десятичная система %
+    decimal := 12345;
+    writeln decimal;
+    
+    decimal := 12345D;
+    writeln decimal
+end

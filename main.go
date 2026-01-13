@@ -6,6 +6,19 @@ import (
 	"strings"
 )
 
+// ANSI colors (simple helper)
+const (
+	colorReset  = "0"
+	colorRed    = "31"
+	colorGreen  = "32"
+	colorYellow = "33"
+	colorCyan   = "36"
+)
+
+func colorize(s, colorCode string) string {
+	return fmt.Sprintf("\x1b[%sm%s\x1b[0m", colorCode, s)
+}
+
 // Типы токенов
 type TokenType int
 
@@ -513,21 +526,25 @@ func isHexDigit(c byte) bool {
 // СИНТАКСИЧЕСКИЙ АНАЛИЗАТОР
 // ============================================================================
 
-// Синтаксический анализатор
+// Интегрированный синтаксический и семантический анализатор
 type Parser struct {
-	tokens  []Token
-	current int
-	errors  []string
-	depth   int // Глубина вложенности для красивого вывода
+	tokens      []Token
+	current     int
+	errors      []string
+	warnings    []string
+	depth       int // Глубина вложенности для красивого вывода
+	symbolTable *SymbolTable
 }
 
-// Создание нового синтаксического анализатора
+// Создание нового анализатора
 func NewParser(tokens []Token) *Parser {
 	return &Parser{
-		tokens:  tokens,
-		current: 0,
-		errors:  make([]string, 0),
-		depth:   0,
+		tokens:      tokens,
+		current:     0,
+		errors:      make([]string, 0),
+		warnings:    make([]string, 0),
+		depth:       0,
+		symbolTable: NewSymbolTable(),
 	}
 }
 
@@ -588,6 +605,18 @@ func (p *Parser) error(message string) {
 	p.errors = append(p.errors, errorMsg)
 }
 
+func (p *Parser) semanticError(message string, token Token) {
+	errorMsg := fmt.Sprintf("Строка %d, столбец %d: %s (токен: '%s')",
+		token.Line, token.Column, message, token.Lexeme)
+	p.errors = append(p.errors, errorMsg)
+}
+
+func (p *Parser) warning(message string, token Token) {
+	warningMsg := fmt.Sprintf("Строка %d, столбец %d: %s",
+		token.Line, token.Column, message)
+	p.warnings = append(p.warnings, warningMsg)
+}
+
 func (p *Parser) printRule(ruleName string) {
 	indent := strings.Repeat("  ", p.depth)
 	fmt.Printf("%s→ %s %s\n", indent, ruleName, p.peek().Lexeme)
@@ -595,26 +624,73 @@ func (p *Parser) printRule(ruleName string) {
 
 // Главный метод разбора программы
 func (p *Parser) Parse() bool {
-	fmt.Println("\n╔════════════════════════════════════════════════════════╗")
-	fmt.Println("║     СИНТАКСИЧЕСКИЙ АНАЛИЗ ПРОГРАММЫ                    ║")
-	fmt.Println("╚════════════════════════════════════════════════════════╝")
+	fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorCyan))
+	fmt.Println(colorize("║     СИНТАКСИЧЕСКИЙ И СЕМАНТИЧЕСКИЙ АНАЛИЗ              ║", colorCyan))
+	fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorCyan))
 
 	p.parseProgram()
 
+	// Проверка неиспользуемых переменных
+	unusedVars := p.symbolTable.GetUnusedVariables()
+	for _, varName := range unusedVars {
+		symbol, _ := p.symbolTable.Get(varName)
+		p.warning(fmt.Sprintf("переменная '%s' объявлена, но не используется", varName),
+			Token{Line: symbol.Line, Column: symbol.Column})
+	}
+
+	// Вывод таблицы символов
+	p.printSymbolTable()
+
+	// Вывод предупреждений
+	if len(p.warnings) > 0 {
+		fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorYellow))
+		fmt.Println(colorize("║     ПРЕДУПРЕЖДЕНИЯ                                     ║", colorYellow))
+		fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorYellow))
+		for i, warn := range p.warnings {
+			fmt.Printf("%s %d: %s\n", colorize("[Предупреждение]", colorYellow), i+1, warn)
+		}
+	}
+
 	if len(p.errors) > 0 {
-		fmt.Println("\n╔════════════════════════════════════════════════════════╗")
-		fmt.Println("║     ОБНАРУЖЕНЫ СИНТАКСИЧЕСКИЕ ОШИБКИ                   ║")
-		fmt.Println("╚════════════════════════════════════════════════════════╝")
+		fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorRed))
+		fmt.Println(colorize("║     ОБНАРУЖЕНЫ ОШИБКИ                                  ║", colorRed))
+		fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorRed))
 		for i, err := range p.errors {
-			fmt.Printf("[Ошибка %d] %s\n", i+1, err)
+			fmt.Printf("%s %d: %s\n", colorize("[Ошибка]", colorRed), i+1, err)
 		}
 		return false
 	}
 
-	fmt.Println("\n╔════════════════════════════════════════════════════════╗")
-	fmt.Println("║     ✓ СИНТАКСИЧЕСКИЙ АНАЛИЗ ЗАВЕРШЕН УСПЕШНО           ║")
-	fmt.Println("╚════════════════════════════════════════════════════════╝")
+	fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorGreen))
+	fmt.Println(colorize("║     ✓ АНАЛИЗ ЗАВЕРШЕН УСПЕШНО                          ║", colorGreen))
+	fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorGreen))
 	return true
+}
+
+func (p *Parser) printSymbolTable() {
+	fmt.Println("\n╔════════════════════════════════════════════════════════╗")
+	fmt.Println("║     ТАБЛИЦА СИМВОЛОВ                                   ║")
+	fmt.Println("╚════════════════════════════════════════════════════════╝")
+	fmt.Printf("%-20s %-10s %-15s %-12s %s\n", "Имя", "Тип", "Позиция", "Объявлена", "Использована")
+	fmt.Println(strings.Repeat("─", 60))
+
+	if len(p.symbolTable.symbols) == 0 {
+		fmt.Println("(пусто)")
+	} else {
+		for _, symbol := range p.symbolTable.symbols {
+			defined := "✓"
+			if !symbol.IsDefined {
+				defined = "✗"
+			}
+			used := "✓"
+			if !symbol.IsUsed {
+				used = "✗"
+			}
+			pos := fmt.Sprintf("%d:%d", symbol.Line, symbol.Column)
+			fmt.Printf("%-20s %-10s %-15s %-12s %s\n",
+				symbol.Name, symbol.Type.String(), pos, defined, used)
+		}
+	}
 }
 
 // <программа>::= begin (<описание> | <оператор>) {; (<описание> | <оператор>)} end
@@ -681,20 +757,18 @@ func (p *Parser) parseDescription() {
 	}
 
 	// Повторяющаяся конструкция: <идентификатор> {, <идентификатор>} : <тип> ;
-	// Может быть 0 или более раз
-
 	for p.check(TOKEN_IDENTIFIER) {
+		var identifiers []Token
+
 		// Первый идентификатор
-		if !p.expect(TOKEN_IDENTIFIER, "Ожидается идентификатор") {
-			p.depth--
-			return
-		}
+		identToken := p.advance()
+		identifiers = append(identifiers, identToken)
 
 		// Дополнительные идентификаторы через запятую
 		for p.match(TOKEN_COMMA) {
-			if !p.expect(TOKEN_IDENTIFIER, "Ожидается идентификатор после ','") {
-				p.depth--
-				return
+			if p.check(TOKEN_IDENTIFIER) {
+				identToken = p.advance()
+				identifiers = append(identifiers, identToken)
 			}
 		}
 
@@ -705,7 +779,16 @@ func (p *Parser) parseDescription() {
 		}
 
 		// Тип данных
-		p.parseType()
+		varType := p.parseType()
+
+		// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: добавляем переменные в таблицу символов
+		for _, ident := range identifiers {
+			err := p.symbolTable.Add(ident.Lexeme, varType, ident.Line, ident.Column)
+			if err != nil {
+				p.semanticError(err.Error(), ident)
+			}
+		}
+
 		// Точка с запятой
 		if p.match(TOKEN_SEMICOLON) {
 			p.depth--
@@ -720,15 +803,24 @@ func (p *Parser) parseDescription() {
 }
 
 // <тип>::= int | float | bool
-func (p *Parser) parseType() {
+func (p *Parser) parseType() DataType {
 	p.printRule("<тип>")
 	p.depth++
 
-	if !p.match(TOKEN_INT, TOKEN_FLOAT, TOKEN_BOOL) {
+	var varType DataType
+	if p.match(TOKEN_INT) {
+		varType = TYPE_INT
+	} else if p.match(TOKEN_FLOAT) {
+		varType = TYPE_FLOAT
+	} else if p.match(TOKEN_BOOL) {
+		varType = TYPE_BOOL
+	} else {
 		p.error("Ожидается тип данных (int, float, bool)")
+		varType = TYPE_UNKNOWN
 	}
 
 	p.depth--
+	return varType
 }
 
 // <оператор>::= <составной> | <присваивания> | <условный> | <фиксированного_цикла> | <условного_цикла> | <ввода> | <вывода>
@@ -790,23 +882,47 @@ func (p *Parser) parseCompoundStatement() {
 }
 
 // <присваивания>::= <идентификатор> := <выражение>
-func (p *Parser) parseAssignment() {
+func (p *Parser) parseAssignment() DataType {
 	p.printRule("<присваивания>")
 	p.depth++
 
+	identToken := p.peek()
 	if !p.expect(TOKEN_IDENTIFIER, "Ожидается идентификатор") {
 		p.depth--
-		return
+		return TYPE_UNKNOWN
+	}
+
+	// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: проверяем, объявлена ли переменная
+	symbol, exists := p.symbolTable.Get(identToken.Lexeme)
+	if !exists {
+		p.semanticError(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+	} else {
+		p.symbolTable.MarkUsed(identToken.Lexeme)
 	}
 
 	if !p.expect(TOKEN_ASSIGN, "Ожидается ':='") {
 		p.depth--
-		return
+		return TYPE_UNKNOWN
 	}
 
-	p.parseExpression()
+	exprType := p.parseExpression()
+
+	// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: проверка типов
+	if exists && symbol.Type != TYPE_UNKNOWN && exprType != TYPE_UNKNOWN {
+		if symbol.Type != exprType {
+			// Допускаем неявное преобразование int -> float
+			if !(symbol.Type == TYPE_FLOAT && exprType == TYPE_INT) {
+				p.warning(fmt.Sprintf("несоответствие типов: присваивание %s переменной типа %s",
+					exprType, symbol.Type), identToken)
+			}
+		}
+	}
 
 	p.depth--
+	if exists {
+		return symbol.Type
+	}
+	return TYPE_UNKNOWN
 }
 
 // <условный>::= if (<выражение>) <оператор> [else <оператор>]
@@ -824,7 +940,12 @@ func (p *Parser) parseIfStatement() {
 		return
 	}
 
-	p.parseExpression()
+	exprType := p.parseExpression()
+
+	// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: условие должно быть bool
+	if exprType != TYPE_BOOL && exprType != TYPE_UNKNOWN {
+		p.warning("условие должно быть логического типа", p.peek())
+	}
 
 	if !p.expect(TOKEN_RPAREN, "Ожидается ')'") {
 		p.depth--
@@ -888,7 +1009,12 @@ func (p *Parser) parseWhileStatement() {
 		return
 	}
 
-	p.parseExpression()
+	exprType := p.parseExpression()
+
+	// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: условие должно быть bool
+	if exprType != TYPE_BOOL && exprType != TYPE_UNKNOWN {
+		p.warning("условие цикла должно быть логического типа", p.peek())
+	}
 
 	if !p.expect(TOKEN_RPAREN, "Ожидается ')'") {
 		p.depth--
@@ -910,15 +1036,31 @@ func (p *Parser) parseReadStatement() {
 		return
 	}
 
+	identToken := p.peek()
 	if !p.expect(TOKEN_IDENTIFIER, "Ожидается идентификатор") {
 		p.depth--
 		return
 	}
 
+	// СЕМАНТИЧЕСКАЯ ПРОВЕРКА
+	if _, exists := p.symbolTable.Get(identToken.Lexeme); !exists {
+		p.semanticError(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+	} else {
+		p.symbolTable.MarkUsed(identToken.Lexeme)
+	}
+
 	for p.match(TOKEN_COMMA) {
+		identToken = p.peek()
 		if !p.expect(TOKEN_IDENTIFIER, "Ожидается идентификатор после ','") {
 			p.depth--
 			return
+		}
+
+		// СЕМАНТИЧЕСКАЯ ПРОВЕРКА
+		if _, exists := p.symbolTable.Get(identToken.Lexeme); !exists {
+			p.semanticError(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+		} else {
+			p.symbolTable.MarkUsed(identToken.Lexeme)
 		}
 	}
 
@@ -945,87 +1087,163 @@ func (p *Parser) parseWriteStatement() {
 }
 
 // <выражение>::= <операнд> {<операции_группы_отношения> <операнд>}
-func (p *Parser) parseExpression() {
+func (p *Parser) parseExpression() DataType {
 	p.printRule("<выражение>")
 	p.depth++
 
-	p.parseOperand()
+	leftType := p.parseOperand()
 
 	for p.match(TOKEN_NE, TOKEN_EQ, TOKEN_LT, TOKEN_LE, TOKEN_GT, TOKEN_GE) {
-		p.parseOperand()
+		rightType := p.parseOperand()
+
+		// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: операции сравнения возвращают bool
+		if leftType != TYPE_UNKNOWN && rightType != TYPE_UNKNOWN {
+			if leftType != rightType {
+				if !((leftType == TYPE_INT && rightType == TYPE_FLOAT) ||
+					(leftType == TYPE_FLOAT && rightType == TYPE_INT)) {
+					p.warning(fmt.Sprintf("сравнение значений разных типов: %s и %s",
+						leftType, rightType), p.peek())
+				}
+			}
+		}
+		leftType = TYPE_BOOL
 	}
 
 	p.depth--
+	return leftType
 }
 
 // <операнд>::= <слагаемое> {<операции_группы_сложения> <слагаемое>}
-func (p *Parser) parseOperand() {
+func (p *Parser) parseOperand() DataType {
 	p.printRule("<операнд>")
 	p.depth++
 
-	p.parseTerm()
+	leftType := p.parseTerm()
 
-	for p.match(TOKEN_PLUS, TOKEN_MIN, TOKEN_OR) {
-		p.parseTerm()
+	for p.match(TOKEN_PLUS, TOKEN_MIN) {
+		rightType := p.parseTerm()
+
+		// СЕМАНТИЧЕСКАЯ ПРОВЕРКА: арифметические операции
+		if leftType == TYPE_BOOL || rightType == TYPE_BOOL {
+			p.warning("арифметические операции с логическим типом", p.peek())
+		}
+
+		if leftType == TYPE_FLOAT || rightType == TYPE_FLOAT {
+			leftType = TYPE_FLOAT
+		}
+	}
+
+	// Логическое ИЛИ
+	for p.match(TOKEN_OR) {
+		rightType := p.parseTerm()
+
+		if leftType != TYPE_BOOL || rightType != TYPE_BOOL {
+			p.warning("логическая операция 'or' требует операнды типа bool", p.peek())
+		}
+		leftType = TYPE_BOOL
 	}
 
 	p.depth--
+	return leftType
 }
 
 // <слагаемое>::= <множитель> {<операции_группы_умножения> <множитель>}
-func (p *Parser) parseTerm() {
+func (p *Parser) parseTerm() DataType {
 	p.printRule("<слагаемое>")
 	p.depth++
 
-	p.parseFactor()
+	leftType := p.parseFactor()
 
-	for p.match(TOKEN_MULT, TOKEN_DIV, TOKEN_AND) {
-		p.parseFactor()
+	for p.match(TOKEN_MULT, TOKEN_DIV) {
+		rightType := p.parseFactor()
+
+		// СЕМАНТИЧЕСКАЯ ПРОВЕРКА
+		if leftType == TYPE_BOOL || rightType == TYPE_BOOL {
+			p.warning("арифметические операции с логическим типом", p.peek())
+		}
+
+		if leftType == TYPE_FLOAT || rightType == TYPE_FLOAT {
+			leftType = TYPE_FLOAT
+		}
+	}
+
+	// Логическое И
+	for p.match(TOKEN_AND) {
+		rightType := p.parseFactor()
+
+		if leftType != TYPE_BOOL || rightType != TYPE_BOOL {
+			p.warning("логическая операция 'and' требует операнды типа bool", p.peek())
+		}
+		leftType = TYPE_BOOL
 	}
 
 	p.depth--
+	return leftType
 }
 
 // <множитель>::= <идентификатор> | <число> | <логическая_константа> |
 //
 //	<унарная_операция> <множитель> | (<выражение>)
-func (p *Parser) parseFactor() {
+func (p *Parser) parseFactor() DataType {
 	p.printRule("<множитель>")
 	p.depth++
 
+	// Унарная операция
 	if p.match(TOKEN_TILDE) {
-		p.parseFactor()
-		p.depth--
-		return
-	}
-
-	if p.match(TOKEN_TRUE, TOKEN_FALSE) {
-		p.depth--
-		return
-	}
-
-	if p.match(TOKEN_NUMBER) {
-		p.depth--
-		return
-	}
-
-	if p.match(TOKEN_IDENTIFIER) {
-		p.depth--
-		return
-	}
-
-	if p.match(TOKEN_LPAREN) {
-		p.parseExpression()
-		if !p.expect(TOKEN_RPAREN, "Ожидается ')' после выражения") {
-			p.depth--
-			return
+		factorType := p.parseFactor()
+		if factorType != TYPE_BOOL && factorType != TYPE_UNKNOWN {
+			p.warning("унарная операция '~' применима только к логическому типу", p.peek())
 		}
 		p.depth--
-		return
+		return TYPE_BOOL
+	}
+
+	// Логические константы
+	if p.match(TOKEN_TRUE, TOKEN_FALSE) {
+		p.depth--
+		return TYPE_BOOL
+	}
+
+	// Числа
+	if p.match(TOKEN_NUMBER) {
+		// Определяем тип числа
+		lexeme := p.tokens[p.current-1].Lexeme
+		if strings.Contains(lexeme, ".") || strings.Contains(lexeme, "E") || strings.Contains(lexeme, "e") {
+			p.depth--
+			return TYPE_FLOAT
+		}
+		p.depth--
+		return TYPE_INT
+	}
+
+	// Идентификаторы
+	if p.check(TOKEN_IDENTIFIER) {
+		identToken := p.advance()
+		symbol, exists := p.symbolTable.Get(identToken.Lexeme)
+		if !exists {
+			p.semanticError(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+			p.depth--
+			return TYPE_UNKNOWN
+		}
+		p.symbolTable.MarkUsed(identToken.Lexeme)
+		p.depth--
+		return symbol.Type
+	}
+
+	// Выражение в скобках
+	if p.match(TOKEN_LPAREN) {
+		exprType := p.parseExpression()
+		if !p.expect(TOKEN_RPAREN, "Ожидается ')' после выражения") {
+			p.depth--
+			return TYPE_UNKNOWN
+		}
+		p.depth--
+		return exprType
 	}
 
 	p.error("Ожидается идентификатор, число, логическая константа или '('")
 	p.depth--
+	return TYPE_UNKNOWN
 }
 
 // ============================================================================
@@ -1241,6 +1459,43 @@ func PrintTokensAsTableIndex(tokens []Token) {
 
 }
 
+// Объединённый вывод токенов: лексема + индекс таблицы при наличии
+func PrintTokensCombined(tokens []Token) {
+	keywordTable, separatorTable := createTokenTables()
+	fmt.Println("\n╔════════════════════════════════════════════════════════╗")
+	fmt.Println("║     РЕЗУЛЬТАТ ЛЕКСИЧЕСКОГО АНАЛИЗА (COMBINED)           ║")
+	fmt.Println("╚════════════════════════════════════════════════════════╝")
+	fmt.Printf("%-20s %-20s %-8s %-8s %-15s\n", "Тип токена", "Лексема", "Строка", "Столбец", "Формат")
+	fmt.Println(strings.Repeat("─", 80))
+
+	for _, token := range tokens {
+		if token.Type == TOKEN_EOF {
+			fmt.Printf("%-20s %-20s %-8d %-8d %-15s\n",
+				"EOF", "", token.Line, token.Column, "-")
+			break
+		}
+
+		if token.Type == TOKEN_ERROR {
+			continue
+		}
+
+		typeName := tokenTypeToString(token.Type)
+		lexeme := token.Lexeme
+		if len(lexeme) > 18 {
+			lexeme = lexeme[:15] + "..."
+		}
+
+		table, index := getTokenTableIndex(token, keywordTable, separatorTable)
+		format := "-"
+		if table >= 0 {
+			format = fmt.Sprintf("[%d, %d]", table, index)
+		}
+
+		fmt.Printf("%-20s %-20s %-8d %-8d %-15s\n",
+			typeName, lexeme, token.Line, token.Column, format)
+	}
+}
+
 // Таблицы для идентификаторов и констант
 var (
 	identifierTable = make([]string, 0) // Таблица 2: Идентификаторы
@@ -1273,6 +1528,648 @@ func addConstant(value string) int {
 	return len(constantTable) - 1
 }
 
+// ============================================================================
+// СЕМАНТИЧЕСКИЙ АНАЛИЗАТОР
+// ============================================================================
+
+// Типы данных
+type DataType int
+
+const (
+	TYPE_UNKNOWN DataType = iota
+	TYPE_INT
+	TYPE_FLOAT
+	TYPE_BOOL
+)
+
+func (dt DataType) String() string {
+	switch dt {
+	case TYPE_INT:
+		return "int"
+	case TYPE_FLOAT:
+		return "float"
+	case TYPE_BOOL:
+		return "bool"
+	default:
+		return "unknown"
+	}
+}
+
+// Символ в таблице символов
+type Symbol struct {
+	Name      string
+	Type      DataType
+	Line      int
+	Column    int
+	IsDefined bool
+	IsUsed    bool
+}
+
+// Таблица символов
+type SymbolTable struct {
+	symbols map[string]*Symbol
+}
+
+func NewSymbolTable() *SymbolTable {
+	return &SymbolTable{
+		symbols: make(map[string]*Symbol),
+	}
+}
+
+func (st *SymbolTable) Add(name string, varType DataType, line, column int) error {
+	if _, exists := st.symbols[name]; exists {
+		return fmt.Errorf("переменная '%s' уже объявлена", name)
+	}
+	st.symbols[name] = &Symbol{
+		Name:      name,
+		Type:      varType,
+		Line:      line,
+		Column:    column,
+		IsDefined: true,
+		IsUsed:    false,
+	}
+	return nil
+}
+
+func (st *SymbolTable) Get(name string) (*Symbol, bool) {
+	symbol, exists := st.symbols[name]
+	return symbol, exists
+}
+
+func (st *SymbolTable) MarkUsed(name string) {
+	if symbol, exists := st.symbols[name]; exists {
+		symbol.IsUsed = true
+	}
+}
+
+func (st *SymbolTable) GetUnusedVariables() []string {
+	var unused []string
+	for name, symbol := range st.symbols {
+		if !symbol.IsUsed {
+			unused = append(unused, name)
+		}
+	}
+	return unused
+}
+
+// Семантический анализатор
+type SemanticAnalyzer struct {
+	tokens      []Token
+	current     int
+	symbolTable *SymbolTable
+	errors      []string
+	warnings    []string
+	currentType DataType
+}
+
+func NewSemanticAnalyzer(tokens []Token) *SemanticAnalyzer {
+	return &SemanticAnalyzer{
+		tokens:      tokens,
+		current:     0,
+		symbolTable: NewSymbolTable(),
+		errors:      make([]string, 0),
+		warnings:    make([]string, 0),
+	}
+}
+
+// Вспомогательные методы
+
+func (sa *SemanticAnalyzer) isAtEnd() bool {
+	return sa.current >= len(sa.tokens) || sa.tokens[sa.current].Type == TOKEN_EOF
+}
+
+func (sa *SemanticAnalyzer) peek() Token {
+	if sa.isAtEnd() {
+		return sa.tokens[len(sa.tokens)-1]
+	}
+	return sa.tokens[sa.current]
+}
+
+func (sa *SemanticAnalyzer) advance() Token {
+	if !sa.isAtEnd() {
+		sa.current++
+	}
+	return sa.tokens[sa.current-1]
+}
+
+func (sa *SemanticAnalyzer) check(tokenType TokenType) bool {
+	if sa.isAtEnd() {
+		return false
+	}
+	return sa.peek().Type == tokenType
+}
+
+func (sa *SemanticAnalyzer) match(types ...TokenType) bool {
+	for _, t := range types {
+		if sa.check(t) {
+			sa.advance()
+			return true
+		}
+	}
+	return false
+}
+
+func (sa *SemanticAnalyzer) error(message string, token Token) {
+	errorMsg := fmt.Sprintf("Строка %d, столбец %d: %s (токен: '%s')",
+		token.Line, token.Column, message, token.Lexeme)
+	sa.errors = append(sa.errors, errorMsg)
+}
+
+func (sa *SemanticAnalyzer) warning(message string, token Token) {
+	warningMsg := fmt.Sprintf("Строка %d, столбец %d: %s",
+		token.Line, token.Column, message)
+	sa.warnings = append(sa.warnings, warningMsg)
+}
+
+// Главный метод анализа
+func (sa *SemanticAnalyzer) Analyze() bool {
+	fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorCyan))
+	fmt.Println(colorize("║     СЕМАНТИЧЕСКИЙ АНАЛИЗ ПРОГРАММЫ                     ║", colorCyan))
+	fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorCyan))
+
+	sa.analyzeProgram()
+
+	// Проверка неиспользуемых переменных
+	unusedVars := sa.symbolTable.GetUnusedVariables()
+	for _, varName := range unusedVars {
+		symbol, _ := sa.symbolTable.Get(varName)
+		sa.warning(fmt.Sprintf("переменная '%s' объявлена, но не используется", varName),
+			Token{Line: symbol.Line, Column: symbol.Column})
+	}
+
+	// Вывод таблицы символов
+	sa.printSymbolTable()
+
+	// Вывод предупреждений
+	if len(sa.warnings) > 0 {
+		fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorYellow))
+		fmt.Println(colorize("║     ПРЕДУПРЕЖДЕНИЯ                                     ║", colorYellow))
+		fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorYellow))
+		for i, warn := range sa.warnings {
+			fmt.Printf("%s %d: %s\n", colorize("[Предупреждение]", colorYellow), i+1, warn)
+		}
+	}
+
+	// Вывод ошибок
+	if len(sa.errors) > 0 {
+		fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorRed))
+		fmt.Println(colorize("║     ОБНАРУЖЕНЫ СЕМАНТИЧЕСКИЕ ОШИБКИ                    ║", colorRed))
+		fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorRed))
+		for i, err := range sa.errors {
+			fmt.Printf("%s %d: %s\n", colorize("[Ошибка]", colorRed), i+1, err)
+		}
+		return false
+	}
+
+	fmt.Println("\n" + colorize("╔════════════════════════════════════════════════════════╗", colorGreen))
+	fmt.Println(colorize("║     ✓ СЕМАНТИЧЕСКИЙ АНАЛИЗ ЗАВЕРШЕН УСПЕШНО            ║", colorGreen))
+	fmt.Println(colorize("╚════════════════════════════════════════════════════════╝", colorGreen))
+	return true
+}
+
+func (sa *SemanticAnalyzer) printSymbolTable() {
+	fmt.Println("\n╔════════════════════════════════════════════════════════╗")
+	fmt.Println("║     ТАБЛИЦА СИМВОЛОВ                                   ║")
+	fmt.Println("╚════════════════════════════════════════════════════════╝")
+	fmt.Printf("%-20s %-10s %-15s %-12s %s\n", "Имя", "Тип", "Позиция", "Объявлена", "Использована")
+	fmt.Println(strings.Repeat("─", 60))
+
+	if len(sa.symbolTable.symbols) == 0 {
+		fmt.Println("(пусто)")
+	} else {
+		for _, symbol := range sa.symbolTable.symbols {
+			defined := "✓"
+			if !symbol.IsDefined {
+				defined = "✗"
+			}
+			used := "✓"
+			if !symbol.IsUsed {
+				used = "✗"
+			}
+			pos := fmt.Sprintf("%d:%d", symbol.Line, symbol.Column)
+			fmt.Printf("%-20s %-10s %-15s %-12s %s\n",
+				symbol.Name, symbol.Type.String(), pos, defined, used)
+		}
+	}
+}
+
+// <программа>
+func (sa *SemanticAnalyzer) analyzeProgram() {
+	if !sa.match(TOKEN_BEGIN) {
+		return
+	}
+
+	if sa.check(TOKEN_END) {
+		sa.advance()
+		return
+	}
+
+	// Обрабатываем последовательность описаний и операторов
+	for !sa.check(TOKEN_END) && !sa.isAtEnd() {
+		if sa.check(TOKEN_VAR) {
+			sa.analyzeDescription()
+		} else if sa.check(TOKEN_SEMICOLON) {
+			// Пропускаем лишние точки с запятой
+			sa.advance()
+		} else if !sa.check(TOKEN_END) {
+			sa.analyzeStatement()
+			// После оператора ожидаем точку с запятой (если это не конец программы)
+			if !sa.check(TOKEN_END) && !sa.check(TOKEN_VAR) {
+				if !sa.match(TOKEN_SEMICOLON) {
+					// Точка с запятой отсутствует, но продолжаем
+				}
+			}
+		}
+	}
+
+	sa.match(TOKEN_END)
+}
+
+// <описание>
+func (sa *SemanticAnalyzer) analyzeDescription() {
+	if !sa.match(TOKEN_VAR) {
+		return
+	}
+
+	// После var ДОЛЖНА быть хотя бы одна конструкция идентификатор : тип ;
+	// Проверяем, что следующий токен - идентификатор
+	if !sa.check(TOKEN_IDENTIFIER) {
+		return
+	}
+
+	// Обрабатываем одну группу объявлений: <идентификатор> {, <идентификатор>} : <тип> ;
+	var identifiers []Token
+
+	// Собираем идентификаторы
+	identToken := sa.advance()
+	identifiers = append(identifiers, identToken)
+
+	for sa.match(TOKEN_COMMA) {
+		if sa.check(TOKEN_IDENTIFIER) {
+			identToken = sa.advance()
+			identifiers = append(identifiers, identToken)
+		}
+	}
+
+	if !sa.match(TOKEN_COLON) {
+		return
+	}
+
+	// Получаем тип
+	varType := sa.analyzeType()
+
+	// Добавляем переменные в таблицу символов
+	for _, ident := range identifiers {
+		err := sa.symbolTable.Add(ident.Lexeme, varType, ident.Line, ident.Column)
+		if err != nil {
+			sa.error(err.Error(), ident)
+		}
+	}
+
+	if !sa.match(TOKEN_SEMICOLON) {
+		return
+	}
+}
+
+// <тип>
+func (sa *SemanticAnalyzer) analyzeType() DataType {
+	if sa.match(TOKEN_INT) {
+		return TYPE_INT
+	} else if sa.match(TOKEN_FLOAT) {
+		return TYPE_FLOAT
+	} else if sa.match(TOKEN_BOOL) {
+		return TYPE_BOOL
+	}
+	return TYPE_UNKNOWN
+}
+
+// <оператор>
+func (sa *SemanticAnalyzer) analyzeStatement() {
+	if sa.check(TOKEN_BEGIN) {
+		sa.analyzeCompoundStatement()
+	} else if sa.check(TOKEN_IDENTIFIER) {
+		sa.analyzeAssignment()
+	} else if sa.check(TOKEN_IF) {
+		sa.analyzeIfStatement()
+	} else if sa.check(TOKEN_FOR) {
+		sa.analyzeForStatement()
+	} else if sa.check(TOKEN_WHILE) {
+		sa.analyzeWhileStatement()
+	} else if sa.check(TOKEN_READLN) {
+		sa.analyzeReadStatement()
+	} else if sa.check(TOKEN_WRITELN) {
+		sa.analyzeWriteStatement()
+	}
+	// Не потребляем точку с запятой здесь - она обрабатывается в analyzeProgram
+}
+
+// <составной>
+func (sa *SemanticAnalyzer) analyzeCompoundStatement() {
+	if !sa.match(TOKEN_BEGIN) {
+		return
+	}
+
+	sa.analyzeStatement()
+
+	for sa.match(TOKEN_SEMICOLON) {
+		if sa.check(TOKEN_END) {
+			break
+		}
+		sa.analyzeStatement()
+	}
+
+	sa.match(TOKEN_END)
+}
+
+// <присваивания>
+func (sa *SemanticAnalyzer) analyzeAssignment() {
+	if !sa.check(TOKEN_IDENTIFIER) {
+		return
+	}
+
+	identToken := sa.advance()
+
+	// Проверяем, объявлена ли переменная
+	symbol, exists := sa.symbolTable.Get(identToken.Lexeme)
+	if !exists {
+		sa.error(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+	} else {
+		sa.symbolTable.MarkUsed(identToken.Lexeme)
+	}
+
+	if !sa.match(TOKEN_ASSIGN) {
+		return
+	}
+
+	// Анализируем выражение справа
+	exprType := sa.analyzeExpression()
+
+	// Проверка типов
+	if exists && symbol.Type != TYPE_UNKNOWN && exprType != TYPE_UNKNOWN {
+		if symbol.Type != exprType {
+			// Допускаем неявное преобразование int -> float
+			if !(symbol.Type == TYPE_FLOAT && exprType == TYPE_INT) {
+				sa.warning(fmt.Sprintf("несоответствие типов: присваивание %s переменной типа %s",
+					exprType, symbol.Type), identToken)
+			}
+		}
+	}
+}
+
+// <условный>
+func (sa *SemanticAnalyzer) analyzeIfStatement() {
+	if !sa.match(TOKEN_IF) {
+		return
+	}
+
+	if !sa.match(TOKEN_LPAREN) {
+		return
+	}
+
+	exprType := sa.analyzeExpression()
+
+	// Проверяем, что условие логического типа
+	if exprType != TYPE_BOOL && exprType != TYPE_UNKNOWN {
+		sa.warning("условие должно быть логического типа", sa.peek())
+	}
+
+	if !sa.match(TOKEN_RPAREN) {
+		return
+	}
+
+	sa.analyzeStatement()
+
+	if sa.match(TOKEN_ELSE) {
+		sa.analyzeStatement()
+	}
+}
+
+// <фиксированного_цикла>
+func (sa *SemanticAnalyzer) analyzeForStatement() {
+	if !sa.match(TOKEN_FOR) {
+		return
+	}
+
+	sa.analyzeAssignment()
+
+	if !sa.match(TOKEN_TO) {
+		return
+	}
+
+	sa.analyzeExpression()
+
+	if sa.match(TOKEN_STEP) {
+		sa.analyzeExpression()
+	}
+
+	sa.analyzeStatement()
+
+	sa.match(TOKEN_NEXT)
+}
+
+// <условного_цикла>
+func (sa *SemanticAnalyzer) analyzeWhileStatement() {
+	if !sa.match(TOKEN_WHILE) {
+		return
+	}
+
+	if !sa.match(TOKEN_LPAREN) {
+		return
+	}
+
+	exprType := sa.analyzeExpression()
+
+	// Проверяем, что условие логического типа
+	if exprType != TYPE_BOOL && exprType != TYPE_UNKNOWN {
+		sa.warning("условие цикла должно быть логического типа", sa.peek())
+	}
+
+	if !sa.match(TOKEN_RPAREN) {
+		return
+	}
+
+	sa.analyzeStatement()
+}
+
+// <ввода>
+func (sa *SemanticAnalyzer) analyzeReadStatement() {
+	if !sa.match(TOKEN_READLN) {
+		return
+	}
+
+	if !sa.check(TOKEN_IDENTIFIER) {
+		return
+	}
+
+	identToken := sa.advance()
+
+	// Проверяем объявление
+	if _, exists := sa.symbolTable.Get(identToken.Lexeme); !exists {
+		sa.error(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+	} else {
+		sa.symbolTable.MarkUsed(identToken.Lexeme)
+	}
+
+	for sa.match(TOKEN_COMMA) {
+		if sa.check(TOKEN_IDENTIFIER) {
+			identToken = sa.advance()
+			if _, exists := sa.symbolTable.Get(identToken.Lexeme); !exists {
+				sa.error(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+			} else {
+				sa.symbolTable.MarkUsed(identToken.Lexeme)
+			}
+		}
+	}
+}
+
+// <вывода>
+func (sa *SemanticAnalyzer) analyzeWriteStatement() {
+	if !sa.match(TOKEN_WRITELN) {
+		return
+	}
+
+	sa.analyzeExpression()
+
+	for sa.match(TOKEN_COMMA) {
+		sa.analyzeExpression()
+	}
+}
+
+// <выражение>
+func (sa *SemanticAnalyzer) analyzeExpression() DataType {
+	leftType := sa.analyzeOperand()
+
+	for sa.match(TOKEN_NE, TOKEN_EQ, TOKEN_LT, TOKEN_LE, TOKEN_GT, TOKEN_GE) {
+		rightType := sa.analyzeOperand()
+
+		// Операции сравнения возвращают bool
+		if leftType != TYPE_UNKNOWN && rightType != TYPE_UNKNOWN {
+			if leftType != rightType {
+				// Допускаем сравнение int с float
+				if !((leftType == TYPE_INT && rightType == TYPE_FLOAT) ||
+					(leftType == TYPE_FLOAT && rightType == TYPE_INT)) {
+					sa.warning(fmt.Sprintf("сравнение значений разных типов: %s и %s",
+						leftType, rightType), sa.peek())
+				}
+			}
+		}
+		leftType = TYPE_BOOL
+	}
+
+	return leftType
+}
+
+// <операнд>
+func (sa *SemanticAnalyzer) analyzeOperand() DataType {
+	leftType := sa.analyzeTerm()
+
+	for sa.match(TOKEN_PLUS, TOKEN_MIN) {
+		rightType := sa.analyzeTerm()
+
+		// Арифметические операции
+		if leftType == TYPE_BOOL || rightType == TYPE_BOOL {
+			sa.warning("арифметические операции с логическим типом", sa.peek())
+		}
+
+		// Результат: если хоть один float, то float
+		if leftType == TYPE_FLOAT || rightType == TYPE_FLOAT {
+			leftType = TYPE_FLOAT
+		}
+	}
+
+	// Логическое ИЛИ
+	for sa.match(TOKEN_OR) {
+		rightType := sa.analyzeTerm()
+
+		if leftType != TYPE_BOOL || rightType != TYPE_BOOL {
+			sa.warning("логическая операция 'or' требует операнды типа bool", sa.peek())
+		}
+		leftType = TYPE_BOOL
+	}
+
+	return leftType
+}
+
+// <слагаемое>
+func (sa *SemanticAnalyzer) analyzeTerm() DataType {
+	leftType := sa.analyzeFactor()
+
+	for sa.match(TOKEN_MULT, TOKEN_DIV) {
+		rightType := sa.analyzeFactor()
+
+		// Арифметические операции
+		if leftType == TYPE_BOOL || rightType == TYPE_BOOL {
+			sa.warning("арифметические операции с логическим типом", sa.peek())
+		}
+
+		// Результат: если хоть один float, то float
+		if leftType == TYPE_FLOAT || rightType == TYPE_FLOAT {
+			leftType = TYPE_FLOAT
+		}
+	}
+
+	// Логическое И
+	for sa.match(TOKEN_AND) {
+		rightType := sa.analyzeFactor()
+
+		if leftType != TYPE_BOOL || rightType != TYPE_BOOL {
+			sa.warning("логическая операция 'and' требует операнды типа bool", sa.peek())
+		}
+		leftType = TYPE_BOOL
+	}
+
+	return leftType
+}
+
+// <множитель>
+func (sa *SemanticAnalyzer) analyzeFactor() DataType {
+	// Унарная операция
+	if sa.match(TOKEN_TILDE) {
+		factorType := sa.analyzeFactor()
+		if factorType != TYPE_BOOL && factorType != TYPE_UNKNOWN {
+			sa.warning("унарная операция '~' применима только к логическому типу", sa.peek())
+		}
+		return TYPE_BOOL
+	}
+
+	// Логические константы
+	if sa.match(TOKEN_TRUE, TOKEN_FALSE) {
+		return TYPE_BOOL
+	}
+
+	// Числа
+	if sa.match(TOKEN_NUMBER) {
+		// Определяем тип числа по его значению
+		// Упрощенно: если есть точка или E, то float, иначе int
+		lexeme := sa.tokens[sa.current-1].Lexeme
+		if strings.Contains(lexeme, ".") || strings.Contains(lexeme, "E") || strings.Contains(lexeme, "e") {
+			return TYPE_FLOAT
+		}
+		return TYPE_INT
+	}
+
+	// Идентификаторы
+	if sa.check(TOKEN_IDENTIFIER) {
+		identToken := sa.advance()
+		symbol, exists := sa.symbolTable.Get(identToken.Lexeme)
+		if !exists {
+			sa.error(fmt.Sprintf("переменная '%s' не объявлена", identToken.Lexeme), identToken)
+			return TYPE_UNKNOWN
+		}
+		sa.symbolTable.MarkUsed(identToken.Lexeme)
+		return symbol.Type
+	}
+
+	// Выражение в скобках
+	if sa.match(TOKEN_LPAREN) {
+		exprType := sa.analyzeExpression()
+		sa.match(TOKEN_RPAREN)
+		return exprType
+	}
+
+	return TYPE_UNKNOWN
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		testSource := ``
@@ -1287,8 +2184,7 @@ func main() {
 		lexer := NewLexer(testSource)
 		tokens := lexer.ScanTokens()
 
-		PrintTokens(tokens)
-		PrintTokensAsTableIndex(tokens)
+		PrintTokensCombined(tokens)
 
 		hasLexicalErrors := false
 		for _, token := range tokens {
@@ -1324,8 +2220,7 @@ func main() {
 	lexer := NewLexer(string(source))
 	tokens := lexer.ScanTokens()
 
-	PrintTokens(tokens)
-	PrintTokensAsTableIndex(tokens)
+	PrintTokensCombined(tokens)
 
 	hasLexicalErrors := false
 	for _, token := range tokens {
@@ -1337,13 +2232,15 @@ func main() {
 	}
 
 	if hasLexicalErrors {
-		fmt.Println("\n✗ Обнаружены лексические ошибки. Синтаксический анализ прерван.")
+		fmt.Println("\n✗ Обнаружены лексические ошибки. Анализ прерван.")
 		os.Exit(1)
 	}
 
+	// Интегрированный синтаксический и семантический анализ
 	parser := NewParser(tokens)
 	success := parser.Parse()
 
+	// Вывод таблиц
 	fmt.Println("\n╔════════════════════════════════════════════════════════╗")
 	fmt.Println("║     ТАБЛИЦА 2: ИДЕНТИФИКАТОРЫ                          ║")
 	fmt.Println("╚════════════════════════════════════════════════════════╝")

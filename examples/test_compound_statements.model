@@ -1,0 +1,13 @@
+% Тест составного оператора %
+begin
+    var x: int;
+    
+    x := 5;
+    
+    if (x GT 0)
+        begin
+            x := x plus 1
+        end;
+        
+    writeln x
+end

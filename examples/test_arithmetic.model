@@ -1,0 +1,27 @@
+% Тест арифметических операций %
+begin
+    var a, b, c: int;
+    var result: int;
+    
+    a := 10;
+    b := 5;
+    
+    % Сложение %
+    c := a plus b;
+    writeln c;
+    
+    % Вычитание %
+    c := a min b;
+    writeln c;
+    
+    % Умножение %
+    c := a mult b;
+    writeln c;
+    
+    % Деление %
+    c := a div b;
+    writeln c;
+    
+    % Сложное выражение %
+    result := a mult b plus c div 2
+end

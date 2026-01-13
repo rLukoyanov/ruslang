@@ -1,0 +1,25 @@
+% Тест операций с вещественными числами %
+begin
+    var x, y, z: float;
+    
+    % Разные форматы float %
+    x := 3.14;
+    y := .5;
+    z := 100.;
+    
+    writeln x, y, z;
+    
+    % Арифметика с float %
+    z := x plus y;
+    writeln z;
+    
+    z := x mult y;
+    writeln z;
+    
+    % Научная нотация %
+    x := 1.5E2;
+    writeln x;
+    
+    x := 2.5e-3;
+    writeln x
+end

@@ -1,0 +1,4 @@
+begin
+    var x: int;
+    x := 5
+end

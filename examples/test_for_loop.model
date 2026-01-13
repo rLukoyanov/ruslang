@@ -1,0 +1,18 @@
+% Тест цикла for %
+begin
+    var i, sum: int;
+    
+    sum := 0;
+    
+    % Цикл от 1 до 10 %
+    for i := 1 to 10
+        sum := sum plus i
+    next;
+    
+    writeln sum;
+    
+    % Цикл с шагом %
+    for i := 0 to 20 step 2
+        writeln i
+    next
+end

@@ -1,0 +1,26 @@
+% Тест логических операций %
+begin
+    var a, b: int;
+    var flag1, flag2, result: bool;
+    
+    a := 10;
+    b := 20;
+    
+    % Операции сравнения %
+    flag1 := a LT b;
+    writeln flag1;
+    
+    flag2 := a GE b;
+    writeln flag2;
+    
+    % Логические операции %
+    result := flag1 and flag2;
+    writeln result;
+    
+    result := flag1 or flag2;
+    writeln result;
+    
+    % Отрицание %
+    result := ~flag1;
+    writeln result
+end

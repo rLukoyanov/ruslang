@@ -1,0 +1,27 @@
+% Тест сложных выражений %
+begin
+    var a, b, c, d: int;
+    var result: int;
+    var flag: bool;
+    
+    a := 10;
+    b := 20;
+    c := 5;
+    d := 2;
+    
+    % Вложенные арифметические операции %
+    result := a plus b mult c min d;
+    writeln result;
+    
+    % Выражения со скобками %
+    result := (a plus b) mult (c min d);
+    writeln result;
+    
+    % Смешанные операции %
+    flag := a plus b GT c mult d;
+    writeln flag;
+    
+    % Сложное логическое выражение %
+    flag := (a GT b) or (c LT d) and (a NE c);
+    writeln flag
+end
