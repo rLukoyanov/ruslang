@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -1528,6 +1530,66 @@ func addConstant(value string) int {
 	return len(constantTable) - 1
 }
 
+// Функция для преобразования числа в IEEE 754 представление (32-бит)
+func numberToIEEE754(value string) string {
+	// Убираем суффиксы систем счисления
+	cleanValue := strings.ToUpper(value)
+	var floatVal float64
+
+	// Проверяем систему счисления
+	if strings.HasSuffix(cleanValue, "B") {
+		// Двоичное число
+		cleanValue = strings.TrimSuffix(cleanValue, "B")
+		if intVal, err := strconv.ParseInt(cleanValue, 2, 64); err == nil {
+			floatVal = float64(intVal)
+		} else {
+			return "N/A"
+		}
+	} else if strings.HasSuffix(cleanValue, "O") {
+		// Восьмеричное число
+		cleanValue = strings.TrimSuffix(cleanValue, "O")
+		if intVal, err := strconv.ParseInt(cleanValue, 8, 64); err == nil {
+			floatVal = float64(intVal)
+		} else {
+			return "N/A"
+		}
+	} else if strings.HasSuffix(cleanValue, "H") {
+		// Шестнадцатеричное число
+		cleanValue = strings.TrimSuffix(cleanValue, "H")
+		if intVal, err := strconv.ParseInt(cleanValue, 16, 64); err == nil {
+			floatVal = float64(intVal)
+		} else {
+			return "N/A"
+		}
+	} else if strings.HasSuffix(cleanValue, "D") {
+		// Десятичное число с суффиксом
+		cleanValue = strings.TrimSuffix(cleanValue, "D")
+		if val, err := strconv.ParseFloat(cleanValue, 64); err == nil {
+			floatVal = val
+		} else {
+			return "N/A"
+		}
+	} else {
+		// Пробуем распарсить как float или int
+		if val, err := strconv.ParseFloat(cleanValue, 64); err == nil {
+			floatVal = val
+		} else {
+			return "N/A"
+		}
+	}
+
+	// Преобразуем в float32 для 32-битного представления
+	float32Val := float32(floatVal)
+	bits := math.Float32bits(float32Val)
+	// Преобразуем в двоичную строку (32 бита)
+	binary := fmt.Sprintf("%032b", bits)
+	// Форматируем: знак (1) | экспонента (8) | мантисса (23)
+	sign := binary[0:1]
+	exponent := binary[1:9]
+	mantissa := binary[9:32]
+	return fmt.Sprintf("%s|%s|%s", sign, exponent, mantissa)
+}
+
 // ============================================================================
 // СЕМАНТИЧЕСКИЙ АНАЛИЗАТОР
 // ============================================================================
@@ -2258,8 +2320,11 @@ func main() {
 	if len(constantTable) == 0 {
 		fmt.Println("(пусто)")
 	} else {
+		fmt.Printf("%-5s %-20s %-40s\n", "ID", "Значение", "IEEE 754-32 (знак|экспонента|мантисса)")
+		fmt.Println(strings.Repeat("─", 70))
 		for i, const_val := range constantTable {
-			fmt.Printf("[%d] %s\n", i, const_val)
+			ieee754 := numberToIEEE754(const_val)
+			fmt.Printf("[%-3d] %-20s %s\n", i, const_val, ieee754)
 		}
 	}
 

@@ -1,0 +1,33 @@
+%Тест экспоненциальной нотации%
+begin
+  var result : float;
+  var scientific1 : float;
+  var scientific2 : float;
+  var scientific3 : float;
+  var very_small : float;
+  var very_large : float;
+  
+  %Простые экспоненциальные числа%
+  scientific1 := 1.5e10;
+  scientific2 := 2.3E5;
+  scientific3 := 3.14e-2;
+  
+  %Отрицательные показатели%
+  very_small := 5.0e-10;
+  very_large := 9.99e20;
+  
+  %Экспоненциальное число с + знаком%
+  result := 2.5e+3;
+  
+  %Целые числа в экспоненциальной форме (с .0)%
+  var exp_int : float;
+  exp_int := 1.0e5;
+  
+  writeln scientific1;
+  writeln scientific2;
+  writeln scientific3;
+  writeln very_small;
+  writeln very_large;
+  writeln result;
+  writeln exp_int;
+end
